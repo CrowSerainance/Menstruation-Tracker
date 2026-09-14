@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a1216" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="description" content="Private on-device period and cycle tracker." />
+  <title>Luna — Private Cycle Tracker</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./icons/icon.svg" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="toast" class="toast" role="status"></div>
+
+  <section id="lock-screen" class="lock hidden">
+    <div class="lock-card card">
+      <div class="brand" style="justify-content:center;margin-bottom:8px">
+        <div class="logo">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M14 4a8 8 0 1 0 6 13.3A8 8 0 0 1 14 4Z" fill="#ffe8ec"/></svg>
+        </div>
+      </div>
+      <h2 style="text-align:center">Enter PIN</h2>
+      <p class="muted" style="text-align:center">This device lock stays on this phone or computer only.</p>
+      <div id="pin-dots" class="pin-dots"><i></i><i></i><i></i><i></i></div>
+      <div class="pad">
+        <button data-digit="1">1</button><button data-digit="2">2</button><button data-digit="3">3</button>
+        <button data-digit="4">4</button><button data-digit="5">5</button><button data-digit="6">6</button>
+        <button data-digit="7">7</button><button data-digit="8">8</button><button data-digit="9">9</button>
+        <span></span><button data-digit="0">0</button><button id="pin-del">⌫</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="onboard-screen" class="onboard hidden">
+    <div class="onboard-card card">
+      <h2>Welcome to Luna</h2>
+      <p class="muted">A private cycle tracker. Nothing is uploaded. Everything stays in this browser.</p>
+      <div class="field">
+        <label for="ob-name">What should we call you? (optional)</label>
+        <input id="ob-name" maxlength="32" placeholder="Name" />
+      </div>
+      <div class="field">
+        <label for="ob-last">First day of last period</label>
+        <input id="ob-last" type="date" />
+      </div>
+      <div class="field">
+        <label for="ob-cycle">Typical cycle length (days)</label>
+        <input id="ob-cycle" type="number" min="18" max="60" value="28" />
+      </div>
+      <div class="field">
+        <label for="ob-period">Typical period length (days)</label>
+        <input id="ob-period" type="number" min="1" max="12" value="5" />
+      </div>
+      <button id="ob-go" class="primary" style="width:100%">Start tracking</button>
+      <p class="disclaimer">Predictions are estimates, not medical advice, and not a contraceptive method.</p>
+    </div>
+  </section>
+
+  <div id="app" class="app hidden">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M14 4a8 8 0 1 0 6 13.3A8 8 0 0 1 14 4Z" fill="#ffe8ec"/></svg>
+        </div>
+        <div>
+          <h1>Luna</h1>
+          <p>Private cycle tracker</p>
+        </div>
+      </div>
+    </header>
+
+    <main id="tab-today" class="tab">
+      <section class="card">
+        <div class="row">
+          <div>
+            <div class="hero-num" id="today-daynum">Day —</div>
+            <div class="hero-label" id="today-date"></div>
+          </div>
+          <div class="phase-chip"><i id="today-dot" class="dot period"></i><span id="today-phase">—</span></div>
+        </div>
+      </section>
+      <section class="metrics">
+        <div class="metric"><b id="today-next">—</b><span>Until period</span></div>
+        <div class="metric"><b id="today-ovu">—</b><span>Ovulation</span></div>
+        <div class="metric"><b id="today-avg">—</b><span>Avg cycle</span></div>
+      </section>
+      <section class="card">
+        <h2>Today</h2>
+        <p class="muted">Flow: <span id="today-flow">Not logged</span></p>
+        <p class="muted" id="today-symptoms">No symptoms logged</p>
+        <button class="primary" style="width:100%;margin-top:8px" onclick="document.querySelector('[data-tab=log]').click()">Log today</button>
+      </section>
+    </main>
+
+    <main id="tab-calendar" class="tab hidden">
+      <section class="card">
+        <div class="cal-head">
+          <button id="cal-prev" class="ghost">‹</button>
+          <h2 id="cal-title" style="margin:0"></h2>
+          <button id="cal-next" class="ghost">›</button>
+        </div>
+        <div id="cal-grid" class="cal-grid"></div>
+        <div class="legend">
+          <span><i class="dot period"></i> Period</span>
+          <span><i class="dot predicted"></i> Predicted</span>
+          <span><i class="dot fertile"></i> Fertile</span>
+          <span><i class="dot ovulation"></i> Ovulation</span>
+        </div>
+      </section>
+      <section class="card">
+        <div class="row">
+          <div id="cal-detail" class="muted"></div>
+          <button id="cal-log" class="primary">Log this day</button>
+        </div>
+      </section>
+    </main>
+
+    <main id="tab-log" class="tab hidden">
+      <section class="card">
+        <div class="row">
+          <div>
+            <h2 style="margin-bottom:2px">Daily log</h2>
+            <div class="faint" id="log-date-label"></div>
+          </div>
+          <input id="log-date" type="date" style="width:auto" />
+        </div>
+        <div class="field" style="margin-top:14px">
+          <label>Flow</label>
+          <div id="flow-chips" class="chips">
+            <button class="chip" data-flow="none">None</button>
+            <button class="chip" data-flow="spotting">Spotting</button>
+            <button class="chip" data-flow="light">Light</button>
+            <button class="chip" data-flow="medium">Medium</button>
+            <button class="chip" data-flow="heavy">Heavy</button>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button id="period-toggle" class="primary">Mark period start</button>
+          <button id="period-end">End period</button>
+        </div>
+      </section>
+      <section class="card">
+        <h2>Symptoms</h2>
+        <div id="symptom-chips" class="chips"></div>
+      </section>
+      <section class="card">
+        <h2>Mood</h2>
+        <div id="mood-chips" class="chips"></div>
+      </section>
+      <section class="card">
+        <h2>Notes</h2>
+        <textarea id="log-notes" placeholder="Anything worth remembering today"></textarea>
+      </section>
+    </main>
+
+    <main id="tab-insights" class="tab hidden">
+      <section class="metrics">
+        <div class="metric"><b id="ins-cycles">0</b><span>Periods logged</span></div>
+        <div class="metric"><b id="ins-avg">—</b><span>Average</span></div>
+        <div class="metric"><b id="ins-range">—</b><span>Range</span></div>
+      </section>
+      <section class="card">
+        <h2>Coming up</h2>
+        <div class="row"><span class="muted">Next period</span><b id="ins-next">—</b></div>
+        <div class="row" style="margin-top:8px"><span class="muted">Estimated ovulation</span><b id="ins-ovu">—</b></div>
+        <p class="disclaimer" style="margin-top:12px">Ovulation is estimated by counting back 14 days from the next expected period. It is an average, not a lab result. Do not use this as birth control.</p>
+      </section>
+      <section class="card">
+        <h2>History</h2>
+        <div id="cycle-list"></div>
+      </section>
+    </main>
+
+    <main id="tab-settings" class="tab hidden">
+      <section class="card">
+        <h2>Profile</h2>
+        <div class="field"><label for="set-name">Name</label><input id="set-name" maxlength="32" /></div>
+        <div class="field"><label for="set-cycle">Typical cycle (days)</label><input id="set-cycle" type="number" min="18" max="60" /></div>
+        <div class="field"><label for="set-period">Typical period (days)</label><input id="set-period" type="number" min="1" max="12" /></div>
+        <div class="field"><label for="set-luteal">Luteal length used for ovulation (days)</label><input id="set-luteal" type="number" min="10" max="16" /></div>
+        <button id="set-save" class="primary" style="width:100%">Save settings</button>
+      </section>
+      <section class="card">
+        <h2>PIN lock</h2>
+        <p class="muted" id="set-pin-status">No PIN</p>
+        <div class="field"><label>New 4-digit PIN</label><input id="pin-new" inputmode="numeric" maxlength="4" /></div>
+        <div class="field"><label>Confirm PIN</label><input id="pin-confirm" inputmode="numeric" maxlength="4" /></div>
+        <div class="btn-row">
+          <button id="set-pin" class="primary">Set PIN</button>
+          <button id="set-pin-clear">Remove PIN</button>
+        </div>
+      </section>
+      <section class="card">
+        <h2>Backup</h2>
+        <p class="muted">Data lives only in this browser. Export a file if you want a copy on another device.</p>
+        <div class="btn-row">
+          <button id="export-data" class="primary">Export JSON</button>
+          <label class="btn" style="text-align:center">Import<input id="import-file" type="file" accept="application/json" class="hidden" /></label>
+        </div>
+      </section>
+      <section class="card">
+        <h2>Danger</h2>
+        <button id="wipe-data" class="danger" style="width:100%">Erase all data on this device</button>
+      </section>
+    </main>
+
+    <nav class="nav">
+      <button data-tab="today" class="active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg>
+        Today
+      </button>
+      <button data-tab="calendar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/></svg>
+        Calendar
+      </button>
+      <button data-tab="log">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>
+        Log
+      </button>
+      <button data-tab="insights">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 19V9M10 19V5M15 19v-7M20 19V8"/></svg>
+        Insights
+      </button>
+      <button data-tab="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9c.3.6.9 1 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+        Settings
+      </button>
+    </nav>
+  </div>
+  <script src="./app.js"></script>
+</body>
+</html>
