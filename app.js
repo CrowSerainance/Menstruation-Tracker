@@ -1,5 +1,7 @@
 const STORE_KEY = "luna.cycle.v1";
 const SESSION_KEY = "luna.unlocked";
+const BACKUP_FORMAT = "luna-cycle-backup";
+const BACKUP_VERSION = 1;
 
 const SYMPTOMS = [
   "Cramps", "Headache", "Bloating", "Fatigue", "Acne",
@@ -71,6 +73,114 @@ function load() {
 }
 function save() {
   localStorage.setItem(STORE_KEY, JSON.stringify(state));
+}
+
+function buildBackup() {
+  return {
+    format: BACKUP_FORMAT,
+    version: BACKUP_VERSION,
+    exportedAt: new Date().toISOString(),
+    app: "Luna",
+    data: {
+      version: 1,
+      onboarded: Boolean(state.onboarded),
+      settings: { ...state.settings },
+      cycles: Array.isArray(state.cycles) ? state.cycles.map((c) => ({ ...c })) : [],
+      days: { ...(state.days || {}) }
+    }
+  };
+}
+
+function backupToText() {
+  return JSON.stringify(buildBackup(), null, 2);
+}
+
+function isPlainObject(v) {
+  return Boolean(v) && typeof v === "object" && !Array.isArray(v);
+}
+
+function normalizeImportedState(parsed) {
+  if (!isPlainObject(parsed)) throw new Error("bad");
+
+  let payload = parsed;
+  if (parsed.format === BACKUP_FORMAT) {
+    if (Number(parsed.version) !== BACKUP_VERSION) throw new Error("bad-version");
+    if (!isPlainObject(parsed.data)) throw new Error("bad-data");
+    payload = parsed.data;
+  } else if (Number(parsed.version) !== 1) {
+    throw new Error("bad-version");
+  }
+
+  if (!isPlainObject(payload.settings)) throw new Error("bad-settings");
+  if (!Array.isArray(payload.cycles)) throw new Error("bad-cycles");
+  if (!isPlainObject(payload.days)) throw new Error("bad-days");
+
+  const cycles = payload.cycles
+    .filter((c) => c && typeof c.start === "string")
+    .map((c) => ({
+      start: c.start,
+      end: typeof c.end === "string" ? c.end : null
+    }));
+
+  const days = {};
+  for (const [iso, day] of Object.entries(payload.days)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso) || !isPlainObject(day)) continue;
+    days[iso] = {
+      flow: FLOWS.includes(day.flow) ? day.flow : "none",
+      symptoms: Array.isArray(day.symptoms) ? day.symptoms.filter((s) => typeof s === "string") : [],
+      mood: typeof day.mood === "string" ? day.mood : "",
+      notes: typeof day.notes === "string" ? day.notes : ""
+    };
+  }
+
+  return {
+    ...defaultState(),
+    version: 1,
+    onboarded: Boolean(payload.onboarded),
+    settings: { ...defaultState().settings, ...payload.settings },
+    cycles,
+    days
+  };
+}
+
+function downloadTextFile(filename, text, mime = "application/json") {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand("copy");
+  ta.remove();
+}
+
+async function applyImportedText(text) {
+  const parsed = JSON.parse(text);
+  state = normalizeImportedState(parsed);
+  save();
+  if (state.settings.pinHash) sessionStorage.removeItem(SESSION_KEY);
+  else sessionStorage.setItem(SESSION_KEY, "1");
+  toast("Backup imported");
+  render();
 }
 
 async function sha256(text) {
@@ -315,6 +425,8 @@ function renderSettings() {
   $("#set-period").value = state.settings.typicalPeriod;
   $("#set-luteal").value = state.settings.lutealDays;
   $("#set-pin-status").textContent = state.settings.pinHash ? "PIN is on" : "No PIN";
+  const shareBtn = $("#share-export");
+  if (shareBtn) shareBtn.classList.toggle("hidden", typeof navigator.share !== "function");
 }
 
 function setTab(tab) {
@@ -440,27 +552,64 @@ function bind() {
     render();
   });
   $("#export-data").addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `luna-backup-${todayISO()}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    downloadTextFile(`luna-backup-${todayISO()}.json`, backupToText());
+    toast("Backup downloaded");
+  });
+  $("#copy-export").addEventListener("click", async () => {
+    try {
+      await copyText(backupToText());
+      toast("Backup copied");
+    } catch {
+      toast("Could not copy");
+    }
+  });
+  $("#share-export").addEventListener("click", async () => {
+    const text = backupToText();
+    const filename = `luna-backup-${todayISO()}.json`;
+    const file = new File([text], filename, { type: "application/json" });
+    try {
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: "Luna backup",
+          text: "Reusable Luna cycle backup — import this JSON in Settings on any device."
+        });
+        return;
+      }
+      if (navigator.share) {
+        await navigator.share({ title: "Luna backup", text });
+        return;
+      }
+      toast("Share is not available here");
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+      toast("Could not share");
+    }
   });
   $("#import-file").addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     try {
-      const parsed = JSON.parse(await file.text());
-      if (!parsed || parsed.version !== 1) throw new Error("bad");
-      state = { ...defaultState(), ...parsed, settings: { ...defaultState().settings, ...(parsed.settings || {}) } };
-      save();
-      toast("Backup restored");
-      render();
+      await applyImportedText(await file.text());
     } catch {
       toast("Invalid backup file");
     }
     e.target.value = "";
+  });
+  $("#paste-import").addEventListener("click", async () => {
+    let text = "";
+    try {
+      if (navigator.clipboard?.readText) text = await navigator.clipboard.readText();
+    } catch {
+      /* fall through to prompt */
+    }
+    if (!text) text = window.prompt("Paste a Luna backup JSON here") || "";
+    if (!text.trim()) return;
+    try {
+      await applyImportedText(text);
+    } catch {
+      toast("Invalid backup JSON");
+    }
   });
   $("#wipe-data").addEventListener("click", () => {
     if (!confirm("Delete all cycle data on this device?")) return;
