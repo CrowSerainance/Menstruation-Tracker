@@ -556,11 +556,13 @@ function bind() {
     toast("Backup downloaded");
   });
   $("#copy-export").addEventListener("click", async () => {
+    const text = backupToText();
     try {
-      await copyText(backupToText());
+      await copyText(text);
       toast("Backup copied");
     } catch {
-      toast("Could not copy");
+      window.prompt("Copy this Luna backup JSON:", text);
+      toast("Select all and copy");
     }
   });
   $("#share-export").addEventListener("click", async () => {
