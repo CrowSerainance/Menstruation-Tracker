@@ -786,9 +786,7 @@ function bind() {
   $("#pain-chips").addEventListener("click", (e) => {
     const b = e.target.closest("[data-pain]");
     if (!b) return;
-    const value = Number(b.dataset.pain);
-    const cur = state.days[view.logDate]?.pain;
-    upsertDay(view.logDate, { pain: cur === value ? null : value });
+    upsertDay(view.logDate, { pain: Number(b.dataset.pain) });
     render();
   });
   $("#symptom-chips").addEventListener("click", (e) => {
