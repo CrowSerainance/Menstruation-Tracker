@@ -5,10 +5,21 @@ const BACKUP_VERSION = 1;
 
 const SYMPTOMS = [
   "Cramps", "Headache", "Bloating", "Fatigue", "Acne",
-  "Back pain", "Tender breasts", "Nausea", "Insomnia", "Appetite"
+  "Back pain", "Tender breasts", "Nausea", "Insomnia", "Appetite",
+  "Dizziness", "Diarrhea"
 ];
 const MOODS = ["Calm", "Happy", "Sensitive", "Anxious", "Irritable", "Low", "Energetic"];
 const FLOWS = ["none", "spotting", "light", "medium", "heavy"];
+
+const DEFAULT_BAG = [
+  { id: "pads", label: "Pads / napkins", packed: false },
+  { id: "liners", label: "Panty liners", packed: false },
+  { id: "wipes", label: "Wipes / tissue", packed: false },
+  { id: "meds", label: "Pain relief", packed: false },
+  { id: "underwear", label: "Spare underwear", packed: false },
+  { id: "bag", label: "Small disposal bag", packed: false },
+  { id: "water", label: "Water bottle", packed: false }
+];
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -39,19 +50,30 @@ function formatLong(iso) {
 function monthTitle(y, m) {
   return new Date(y, m, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
 }
+function clamp(n, a, b) { return Math.min(b, Math.max(a, n)); }
+function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+function defaultBagItems() {
+  return DEFAULT_BAG.map((item) => ({ ...item }));
+}
 
 function defaultState() {
   return {
     version: 1,
     onboarded: false,
+    meta: { lastSavedAt: "", lastVerifiedAt: "" },
     settings: {
       displayName: "",
       typicalCycle: 28,
       typicalPeriod: 5,
       lutealDays: 14,
       pinHash: "",
-      weekStartsOn: 0
+      weekStartsOn: 0,
+      remindersEnabled: false,
+      remindDaysBefore: 2,
+      lastReminderKey: ""
     },
+    bag: defaultBagItems(),
     cycles: [],
     days: {}
   };
@@ -60,19 +82,103 @@ function defaultState() {
 let state = load();
 let view = { tab: "today", cal: new Date(), selected: todayISO(), logDate: todayISO() };
 let pinBuffer = "";
+let pendingImport = null;
+let reminderTimer = null;
+
+function migrateState(parsed) {
+  const base = defaultState();
+  const settings = { ...base.settings, ...(parsed.settings || {}) };
+  settings.remindDaysBefore = clamp(Number(settings.remindDaysBefore) || 2, 1, 5);
+  settings.remindersEnabled = Boolean(settings.remindersEnabled);
+  settings.lastReminderKey = typeof settings.lastReminderKey === "string" ? settings.lastReminderKey : "";
+
+  let bag = Array.isArray(parsed.bag) ? parsed.bag : defaultBagItems();
+  bag = bag
+    .filter((item) => item && typeof item.id === "string" && typeof item.label === "string")
+    .map((item) => ({ id: item.id, label: item.label, packed: Boolean(item.packed) }));
+  if (!bag.length) bag = defaultBagItems();
+
+  const days = {};
+  for (const [iso, day] of Object.entries(parsed.days || {})) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso) || !day || typeof day !== "object") continue;
+    const painRaw = day.pain;
+    const pain = painRaw === null || painRaw === undefined || painRaw === ""
+      ? null
+      : clamp(Number(painRaw), 0, 10);
+    days[iso] = {
+      flow: FLOWS.includes(day.flow) ? day.flow : "none",
+      symptoms: Array.isArray(day.symptoms) ? day.symptoms.filter((s) => typeof s === "string") : [],
+      mood: typeof day.mood === "string" ? day.mood : "",
+      notes: typeof day.notes === "string" ? day.notes : "",
+      pain: Number.isFinite(pain) ? pain : null
+    };
+  }
+
+  return {
+    ...base,
+    version: 1,
+    onboarded: Boolean(parsed.onboarded),
+    meta: { ...base.meta, ...(parsed.meta || {}) },
+    settings,
+    bag,
+    cycles: Array.isArray(parsed.cycles)
+      ? parsed.cycles.filter((c) => c && typeof c.start === "string").map((c) => ({
+        start: c.start,
+        end: typeof c.end === "string" ? c.end : null
+      }))
+      : [],
+    days
+  };
+}
 
 function load() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return defaultState();
-    const parsed = JSON.parse(raw);
-    return { ...defaultState(), ...parsed, settings: { ...defaultState().settings, ...(parsed.settings || {}) } };
+    return migrateState(JSON.parse(raw));
   } catch {
     return defaultState();
   }
 }
+
 function save() {
-  localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  state.meta = state.meta || {};
+  state.meta.lastSavedAt = new Date().toISOString();
+  const text = JSON.stringify(state);
+  localStorage.setItem(STORE_KEY, text);
+  try {
+    const readBack = localStorage.getItem(STORE_KEY);
+    if (readBack !== text) throw new Error("read-back mismatch");
+  } catch (err) {
+    console.warn("Luna storage verify failed", err);
+    toast("Saved, but storage verify failed");
+  }
+}
+
+function storageStats() {
+  const raw = localStorage.getItem(STORE_KEY) || "";
+  const bytes = new Blob([raw]).size;
+  return {
+    bytes,
+    pretty: bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`,
+    days: Object.keys(state.days || {}).length,
+    cycles: (state.cycles || []).length,
+    lastSaved: state.meta?.lastSavedAt ? formatLong(state.meta.lastSavedAt.slice(0, 10)) + " · " + state.meta.lastSavedAt.slice(11, 16) : "—"
+  };
+}
+
+function verifyStorage() {
+  const probe = `luna.verify.${Date.now()}`;
+  localStorage.setItem(probe, "ok");
+  const ok = localStorage.getItem(probe) === "ok";
+  localStorage.removeItem(probe);
+  save();
+  const read = load();
+  const match = JSON.stringify(read.cycles) === JSON.stringify(state.cycles)
+    && Object.keys(read.days).length === Object.keys(state.days).length;
+  state.meta.lastVerifiedAt = new Date().toISOString();
+  save();
+  return ok && match;
 }
 
 function buildBackup() {
@@ -84,7 +190,9 @@ function buildBackup() {
     data: {
       version: 1,
       onboarded: Boolean(state.onboarded),
+      meta: { ...(state.meta || {}) },
       settings: { ...state.settings },
+      bag: (state.bag || []).map((item) => ({ ...item })),
       cycles: Array.isArray(state.cycles) ? state.cycles.map((c) => ({ ...c })) : [],
       days: { ...(state.days || {}) }
     }
@@ -95,13 +203,51 @@ function backupToText() {
   return JSON.stringify(buildBackup(), null, 2);
 }
 
+function readableBackup() {
+  const p = predictions();
+  const lines = [
+    "Luna cycle backup (human-readable)",
+    `Exported: ${new Date().toISOString()}`,
+    `Name: ${state.settings.displayName || "(none)"}`,
+    `Onboarded: ${state.onboarded}`,
+    `Typical cycle: ${state.settings.typicalCycle}d · Period: ${state.settings.typicalPeriod}d · Luteal: ${state.settings.lutealDays}d`,
+    `Reminders: ${state.settings.remindersEnabled ? "on" : "off"} · ${state.settings.remindDaysBefore} day(s) ahead`,
+    `Cycles logged: ${state.cycles.length} · Days logged: ${Object.keys(state.days).length}`,
+    `Next predicted period: ${p.nextStart || "—"}`,
+    "",
+    "## Bag checklist"
+  ];
+  for (const item of state.bag || []) {
+    lines.push(`- [${item.packed ? "x" : " "}] ${item.label}`);
+  }
+  lines.push("", "## Cycles");
+  const starts = state.cycles.map((c) => c.start).sort();
+  if (!starts.length) lines.push("(none)");
+  for (const start of starts) {
+    const c = state.cycles.find((x) => x.start === start);
+    lines.push(`- ${start} → ${c?.end || "open"}`);
+  }
+  lines.push("", "## Daily logs");
+  const dates = Object.keys(state.days).sort();
+  if (!dates.length) lines.push("(none)");
+  for (const iso of dates) {
+    const day = state.days[iso];
+    lines.push(`### ${iso}`);
+    lines.push(`Flow: ${day.flow || "none"} | Pain: ${day.pain === null || day.pain === undefined ? "—" : `${day.pain}/10`} | Mood: ${day.mood || "—"}`);
+    if ((day.symptoms || []).length) lines.push(`Symptoms: ${day.symptoms.join(", ")}`);
+    if (day.notes) lines.push(`Notes: ${day.notes}`);
+    lines.push("");
+  }
+  lines.push("", "## Machine JSON", "Import the matching .json backup in Luna Settings for a full restore.");
+  return lines.join("\n");
+}
+
 function isPlainObject(v) {
   return Boolean(v) && typeof v === "object" && !Array.isArray(v);
 }
 
 function normalizeImportedState(parsed) {
   if (!isPlainObject(parsed)) throw new Error("bad");
-
   let payload = parsed;
   if (parsed.format === BACKUP_FORMAT) {
     if (Number(parsed.version) !== BACKUP_VERSION) throw new Error("bad-version");
@@ -110,37 +256,26 @@ function normalizeImportedState(parsed) {
   } else if (Number(parsed.version) !== 1) {
     throw new Error("bad-version");
   }
-
   if (!isPlainObject(payload.settings)) throw new Error("bad-settings");
   if (!Array.isArray(payload.cycles)) throw new Error("bad-cycles");
   if (!isPlainObject(payload.days)) throw new Error("bad-days");
+  return migrateState(payload);
+}
 
-  const cycles = payload.cycles
-    .filter((c) => c && typeof c.start === "string")
-    .map((c) => ({
-      start: c.start,
-      end: typeof c.end === "string" ? c.end : null
-    }));
-
-  const days = {};
-  for (const [iso, day] of Object.entries(payload.days)) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso) || !isPlainObject(day)) continue;
-    days[iso] = {
-      flow: FLOWS.includes(day.flow) ? day.flow : "none",
-      symptoms: Array.isArray(day.symptoms) ? day.symptoms.filter((s) => typeof s === "string") : [],
-      mood: typeof day.mood === "string" ? day.mood : "",
-      notes: typeof day.notes === "string" ? day.notes : ""
-    };
-  }
-
-  return {
-    ...defaultState(),
-    version: 1,
-    onboarded: Boolean(payload.onboarded),
-    settings: { ...defaultState().settings, ...payload.settings },
-    cycles,
-    days
-  };
+function summarizeState(s) {
+  const dates = Object.keys(s.days || {}).sort();
+  const cycles = (s.cycles || []).map((c) => c.start).sort();
+  return [
+    `Cycles: ${cycles.length}`,
+    `Days logged: ${dates.length}`,
+    `First log: ${dates[0] || "—"}`,
+    `Latest log: ${dates.at(-1) || "—"}`,
+    `Latest period start: ${cycles.at(-1) || "—"}`,
+    `Reminders: ${s.settings.remindersEnabled ? "on" : "off"} (${s.settings.remindDaysBefore}d)`,
+    `Bag items: ${(s.bag || []).length}`,
+    `PIN: ${s.settings.pinHash ? "yes" : "no"}`,
+    `Name: ${s.settings.displayName || "(none)"}`
+  ].join("\n");
 }
 
 function downloadTextFile(filename, text, mime = "application/json") {
@@ -173,14 +308,26 @@ async function copyText(text) {
   ta.remove();
 }
 
-async function applyImportedText(text) {
+function stageImport(text) {
   const parsed = JSON.parse(text);
-  state = normalizeImportedState(parsed);
+  const next = normalizeImportedState(parsed);
+  pendingImport = next;
+  $("#import-preview").textContent = `Ready to import:\n${summarizeState(next)}\n\nTap “Confirm replace with import” to overwrite this device.`;
+  $("#confirm-import").classList.remove("hidden");
+}
+
+function commitPendingImport() {
+  if (!pendingImport) return;
+  state = pendingImport;
+  pendingImport = null;
   save();
   if (state.settings.pinHash) sessionStorage.removeItem(SESSION_KEY);
   else sessionStorage.setItem(SESSION_KEY, "1");
+  $("#import-preview").textContent = "Import applied. Local storage updated.";
+  $("#confirm-import").classList.add("hidden");
   toast("Backup imported");
   render();
+  scheduleReminderChecks();
 }
 
 async function sha256(text) {
@@ -257,6 +404,99 @@ function cycleDayNumber(iso) {
   return diffDays(start, iso) + 1;
 }
 
+function daysUntilPeriod() {
+  const p = predictions();
+  if (!p.nextStart) return null;
+  return diffDays(todayISO(), p.nextStart);
+}
+
+function periodAheadActive() {
+  const n = daysUntilPeriod();
+  if (n === null) return false;
+  const lead = clamp(Number(state.settings.remindDaysBefore) || 2, 1, 5);
+  return n >= 0 && n <= lead;
+}
+
+async function ensureNotificationPermission() {
+  if (!("Notification" in window)) return "unsupported";
+  if (Notification.permission === "granted") return "granted";
+  if (Notification.permission === "denied") return "denied";
+  return Notification.requestPermission();
+}
+
+function notificationPayload(title, body, tag) {
+  return {
+    title,
+    body,
+    options: {
+      body,
+      icon: "./icons/icon.svg",
+      badge: "./icons/icon.svg",
+      tag: tag || "luna-period-ahead",
+      renotify: true,
+      requireInteraction: true,
+      vibrate: [280, 120, 280, 120, 280, 120, 420],
+      silent: false,
+      data: { url: "./index.html", type: "period-ahead" }
+    }
+  };
+}
+
+async function showStrongNotification(title, body, tag) {
+  const payload = notificationPayload(title, body, tag);
+  try {
+    const reg = await navigator.serviceWorker?.ready;
+    if (reg?.showNotification) {
+      await reg.showNotification(payload.title, payload.options);
+      return true;
+    }
+  } catch {
+    /* fall through */
+  }
+  if ("Notification" in window && Notification.permission === "granted") {
+    // eslint-disable-next-line no-new
+    new Notification(payload.title, payload.options);
+    return true;
+  }
+  return false;
+}
+
+async function checkPeriodReminders(force = false) {
+  if (!state.onboarded) return;
+  if (!state.settings.remindersEnabled && !force) return;
+  const p = predictions();
+  if (!p.nextStart) return;
+  const n = diffDays(todayISO(), p.nextStart);
+  const lead = clamp(Number(state.settings.remindDaysBefore) || 2, 1, 5);
+  if (!force && (n < 0 || n > lead)) return;
+
+  const key = `${p.nextStart}:${todayISO()}`;
+  if (!force && state.settings.lastReminderKey === key) return;
+
+  const title = n <= 0 ? "Period window — Luna" : `Period in ${n} day${n === 1 ? "" : "s"} — Luna`;
+  const body = n <= 0
+    ? "Your period may start today. Check your bag checklist in Luna."
+    : `Predicted around ${formatLong(p.nextStart)}. Pack pads, meds, and spare underwear.`;
+
+  const permission = await ensureNotificationPermission();
+  if (permission !== "granted") {
+    if (force) toast("Allow notifications to receive alerts");
+    return;
+  }
+  const shown = await showStrongNotification(title, body, `luna-period-${p.nextStart}`);
+  if (shown) {
+    state.settings.lastReminderKey = key;
+    save();
+    if (force) toast("Test alert sent");
+  }
+}
+
+function scheduleReminderChecks() {
+  checkPeriodReminders(false);
+  if (reminderTimer) clearInterval(reminderTimer);
+  reminderTimer = setInterval(() => checkPeriodReminders(false), 30 * 60 * 1000);
+}
+
 function toast(msg) {
   const el = $("#toast");
   el.textContent = msg;
@@ -283,6 +523,18 @@ function render() {
 function renderOnboard() {
   $("#ob-cycle").value = state.settings.typicalCycle;
   $("#ob-period").value = state.settings.typicalPeriod;
+}
+
+function renderBag() {
+  const list = $("#bag-list");
+  if (!list) return;
+  if (!Array.isArray(state.bag) || !state.bag.length) state.bag = defaultBagItems();
+  list.innerHTML = state.bag.map((item) => `
+    <label class="check-item ${item.packed ? "done" : ""}">
+      <input type="checkbox" data-bag="${item.id}" ${item.packed ? "checked" : ""} />
+      <span>${item.label}</span>
+    </label>
+  `).join("");
 }
 
 function renderToday() {
@@ -315,10 +567,27 @@ function renderToday() {
   }
   const day = state.days[iso] || {};
   $("#today-flow").textContent = day.flow && day.flow !== "none" ? cap(day.flow) : "Not logged";
+  $("#today-pain").textContent = day.pain === null || day.pain === undefined ? "Not logged" : `${day.pain}/10`;
   $("#today-symptoms").textContent = (day.symptoms || []).length ? day.symptoms.join(", ") : "No symptoms logged";
-}
 
-function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  const alert = $("#period-alert");
+  const ahead = periodAheadActive();
+  alert.classList.toggle("hidden", !ahead && phase !== "period");
+  if (ahead || phase === "period") {
+    const n = daysUntilPeriod();
+    if (phase === "period") {
+      $("#period-alert-title").textContent = "Period day";
+      $("#period-alert-body").textContent = "Be kind to yourself today. Use the bag checklist if you are heading out.";
+    } else if (n === 0) {
+      $("#period-alert-title").textContent = "Period may start today";
+      $("#period-alert-body").textContent = "Pack your bag now — pads, pain relief, spare underwear.";
+    } else {
+      $("#period-alert-title").textContent = `Period in ${n} day${n === 1 ? "" : "s"}`;
+      $("#period-alert-body").textContent = `Predicted around ${formatLong(p.nextStart)}. Tick your bag checklist below.`;
+    }
+  }
+  renderBag();
+}
 
 function renderCalendar() {
   const y = view.cal.getFullYear();
@@ -344,7 +613,8 @@ function renderCalendar() {
   const today = todayISO();
   cells.forEach((c) => {
     const phase = phaseFor(c.iso);
-    const logged = Boolean(state.days[c.iso] && ((state.days[c.iso].symptoms || []).length || state.days[c.iso].notes || (state.days[c.iso].flow && state.days[c.iso].flow !== "none")));
+    const day = state.days[c.iso];
+    const logged = Boolean(day && ((day.symptoms || []).length || day.notes || (day.flow && day.flow !== "none") || (day.pain !== null && day.pain !== undefined)));
     const cls = [
       "day",
       c.out ? "out" : "",
@@ -378,8 +648,13 @@ function renderLog() {
   const iso = view.logDate;
   $("#log-date").value = iso;
   $("#log-date-label").textContent = formatLong(iso);
-  const day = state.days[iso] || { flow: "none", symptoms: [], mood: "", notes: "" };
+  const day = state.days[iso] || { flow: "none", symptoms: [], mood: "", notes: "", pain: null };
   $$("[data-flow]").forEach((b) => b.classList.toggle("on", b.dataset.flow === (day.flow || "none")));
+  const painWrap = $("#pain-chips");
+  painWrap.innerHTML = Array.from({ length: 11 }, (_, i) =>
+    `<button type="button" class="chip ${day.pain === i ? "on" : ""}" data-pain="${i}">${i}</button>`
+  ).join("");
+  $("#pain-value-label").textContent = day.pain === null || day.pain === undefined ? "Not set" : `${day.pain}/10`;
   const wrap = $("#symptom-chips");
   wrap.innerHTML = SYMPTOMS.map((s) => `<button type="button" class="chip ${(day.symptoms || []).includes(s) ? "on" : ""}" data-sym="${s}">${s}</button>`).join("");
   const moods = $("#mood-chips");
@@ -425,6 +700,23 @@ function renderSettings() {
   $("#set-period").value = state.settings.typicalPeriod;
   $("#set-luteal").value = state.settings.lutealDays;
   $("#set-pin-status").textContent = state.settings.pinHash ? "PIN is on" : "No PIN";
+  $("#set-reminders").checked = Boolean(state.settings.remindersEnabled);
+  $("#set-remind-days").value = state.settings.remindDaysBefore || 2;
+  const perm = ("Notification" in window) ? Notification.permission : "unsupported";
+  $("#notify-status").textContent = perm === "granted"
+    ? "Notifications: allowed"
+    : perm === "denied"
+      ? "Notifications: blocked in browser settings"
+      : perm === "unsupported"
+        ? "Notifications: not supported here"
+        : "Notifications: permission not granted yet";
+
+  const stats = storageStats();
+  $("#store-bytes").textContent = stats.pretty;
+  $("#store-days").textContent = String(stats.days);
+  $("#store-cycles").textContent = String(stats.cycles);
+  $("#store-saved").textContent = stats.lastSaved;
+
   const shareBtn = $("#share-export");
   if (shareBtn) shareBtn.classList.toggle("hidden", typeof navigator.share !== "function");
 }
@@ -435,7 +727,15 @@ function setTab(tab) {
 }
 
 function upsertDay(iso, patch) {
-  state.days[iso] = { flow: "none", symptoms: [], mood: "", notes: "", ...(state.days[iso] || {}), ...patch };
+  state.days[iso] = {
+    flow: "none",
+    symptoms: [],
+    mood: "",
+    notes: "",
+    pain: null,
+    ...(state.days[iso] || {}),
+    ...patch
+  };
   save();
 }
 
@@ -483,6 +783,14 @@ function bind() {
     }
     render();
   });
+  $("#pain-chips").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-pain]");
+    if (!b) return;
+    const value = Number(b.dataset.pain);
+    const cur = state.days[view.logDate]?.pain;
+    upsertDay(view.logDate, { pain: cur === value ? null : value });
+    render();
+  });
   $("#symptom-chips").addEventListener("click", (e) => {
     const b = e.target.closest("[data-sym]");
     if (!b) return;
@@ -513,6 +821,22 @@ function bind() {
   });
   $("#period-end").addEventListener("click", () => { endPeriod(view.logDate); toast("Period ended"); render(); });
 
+  $("#bag-list").addEventListener("change", (e) => {
+    const input = e.target.closest("[data-bag]");
+    if (!input) return;
+    const item = state.bag.find((x) => x.id === input.dataset.bag);
+    if (!item) return;
+    item.packed = Boolean(input.checked);
+    save();
+    renderBag();
+  });
+  $("#bag-reset").addEventListener("click", () => {
+    state.bag = defaultBagItems();
+    save();
+    toast("Bag checklist reset");
+    renderBag();
+  });
+
   $("#ob-go").addEventListener("click", () => {
     const last = $("#ob-last").value;
     state.settings.typicalCycle = clamp(Number($("#ob-cycle").value) || 28, 18, 60);
@@ -522,6 +846,7 @@ function bind() {
     state.onboarded = true;
     save();
     render();
+    scheduleReminderChecks();
   });
 
   $("#set-save").addEventListener("click", () => {
@@ -532,6 +857,21 @@ function bind() {
     save();
     toast("Settings saved");
     render();
+  });
+  $("#set-reminders-save").addEventListener("click", async () => {
+    state.settings.remindersEnabled = $("#set-reminders").checked;
+    state.settings.remindDaysBefore = clamp(Number($("#set-remind-days").value) || 2, 1, 5);
+    if (state.settings.remindersEnabled) {
+      const perm = await ensureNotificationPermission();
+      if (perm !== "granted") toast("Enable notifications in the browser prompt");
+    }
+    save();
+    toast("Reminders saved");
+    render();
+    scheduleReminderChecks();
+  });
+  $("#test-notification").addEventListener("click", async () => {
+    await checkPeriodReminders(true);
   });
   $("#set-pin").addEventListener("click", async () => {
     const a = $("#pin-new").value;
@@ -551,9 +891,23 @@ function bind() {
     toast("PIN removed");
     render();
   });
+
+  $("#verify-storage").addEventListener("click", () => {
+    const ok = verifyStorage();
+    $("#store-verify").textContent = ok
+      ? `Read/write OK · verified ${new Date().toLocaleTimeString()}`
+      : "Storage check failed — export a backup now.";
+    toast(ok ? "Storage verified" : "Storage problem");
+    renderSettings();
+  });
+
   $("#export-data").addEventListener("click", () => {
     downloadTextFile(`luna-backup-${todayISO()}.json`, backupToText());
-    toast("Backup downloaded");
+    toast("JSON backup downloaded");
+  });
+  $("#export-readable").addEventListener("click", () => {
+    downloadTextFile(`luna-summary-${todayISO()}.txt`, readableBackup(), "text/plain");
+    toast("Readable summary downloaded");
   });
   $("#copy-export").addEventListener("click", async () => {
     const text = backupToText();
@@ -592,9 +946,13 @@ function bind() {
     const file = e.target.files[0];
     if (!file) return;
     try {
-      await applyImportedText(await file.text());
+      stageImport(await file.text());
+      toast("Preview ready — confirm import");
     } catch {
       toast("Invalid backup file");
+      $("#import-preview").textContent = "Could not parse that file. Use a Luna JSON backup.";
+      $("#confirm-import").classList.add("hidden");
+      pendingImport = null;
     }
     e.target.value = "";
   });
@@ -603,19 +961,29 @@ function bind() {
     try {
       if (navigator.clipboard?.readText) text = await navigator.clipboard.readText();
     } catch {
-      /* fall through to prompt */
+      /* fall through */
     }
     if (!text) text = window.prompt("Paste a Luna backup JSON here") || "";
     if (!text.trim()) return;
     try {
-      await applyImportedText(text);
+      stageImport(text);
+      toast("Preview ready — confirm import");
     } catch {
       toast("Invalid backup JSON");
+      $("#import-preview").textContent = "Could not parse pasted JSON.";
+      $("#confirm-import").classList.add("hidden");
+      pendingImport = null;
     }
+  });
+  $("#confirm-import").addEventListener("click", () => {
+    if (!pendingImport) return;
+    if (!confirm("Replace all Luna data on this device with the imported backup?")) return;
+    commitPendingImport();
   });
   $("#wipe-data").addEventListener("click", () => {
     if (!confirm("Delete all cycle data on this device?")) return;
     state = defaultState();
+    pendingImport = null;
     save();
     sessionStorage.removeItem(SESSION_KEY);
     toast("Data cleared");
@@ -624,9 +992,11 @@ function bind() {
 
   $$("[data-digit]").forEach((b) => b.addEventListener("click", () => addPinDigit(b.dataset.digit)));
   $("#pin-del").addEventListener("click", () => { pinBuffer = pinBuffer.slice(0, -1); paintPin(); });
-}
 
-function clamp(n, a, b) { return Math.min(b, Math.max(a, n)); }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") checkPeriodReminders(false);
+  });
+}
 
 function paintPin() {
   $$("#pin-dots i").forEach((el, i) => el.classList.toggle("filled", i < pinBuffer.length));
@@ -642,6 +1012,7 @@ async function addPinDigit(d) {
       pinBuffer = "";
       paintPin();
       render();
+      scheduleReminderChecks();
     } else {
       pinBuffer = "";
       paintPin();
@@ -651,11 +1022,13 @@ async function addPinDigit(d) {
 }
 
 function boot() {
+  state = migrateState(state);
   bind();
   render();
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./sw.js").catch(() => {});
   }
+  scheduleReminderChecks();
 }
 
 document.addEventListener("DOMContentLoaded", boot);

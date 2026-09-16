@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#1a1216" />
+  <meta name="theme-color" content="#fff5ee" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="description" content="Private on-device period and cycle tracker." />
   <title>Luna — Private Cycle Tracker</title>
   <link rel="manifest" href="./manifest.json" />
@@ -20,7 +20,7 @@
     <div class="lock-card card">
       <div class="brand" style="justify-content:center;margin-bottom:8px">
         <div class="logo">
-          <svg viewBox="0 0 24 24" fill="none"><path d="M14 4a8 8 0 1 0 6 13.3A8 8 0 0 1 14 4Z" fill="#ffe8ec"/></svg>
+          <svg viewBox="0 0 24 24" fill="none"><path d="M14 4a8 8 0 1 0 6 13.3A8 8 0 0 1 14 4Z" fill="#fff5ee"/></svg>
         </div>
       </div>
       <h2 style="text-align:center">Enter PIN</h2>
@@ -64,7 +64,7 @@
     <header class="topbar">
       <div class="brand">
         <div class="logo">
-          <svg viewBox="0 0 24 24" fill="none"><path d="M14 4a8 8 0 1 0 6 13.3A8 8 0 0 1 14 4Z" fill="#ffe8ec"/></svg>
+          <svg viewBox="0 0 24 24" fill="none"><path d="M14 4a8 8 0 1 0 6 13.3A8 8 0 0 1 14 4Z" fill="#fff5ee"/></svg>
         </div>
         <div>
           <h1>Luna</h1>
@@ -74,6 +74,10 @@
     </header>
 
     <main id="tab-today" class="tab">
+      <div id="period-alert" class="alert-banner hidden" role="status">
+        <strong id="period-alert-title">Period may be soon</strong>
+        <p class="muted" id="period-alert-body" style="margin:0">Pack your bag and turn on reminders in Settings.</p>
+      </div>
       <section class="card">
         <div class="row">
           <div>
@@ -91,8 +95,17 @@
       <section class="card">
         <h2>Today</h2>
         <p class="muted">Flow: <span id="today-flow">Not logged</span></p>
+        <p class="muted">Pain: <span id="today-pain">Not logged</span></p>
         <p class="muted" id="today-symptoms">No symptoms logged</p>
         <button class="primary" style="width:100%;margin-top:8px" onclick="document.querySelector('[data-tab=log]').click()">Log today</button>
+      </section>
+      <section id="bag-card" class="card">
+        <div class="row">
+          <h2 style="margin:0">Period bag checklist</h2>
+          <button id="bag-reset" class="ghost" style="width:auto;padding:6px 10px">Reset</button>
+        </div>
+        <p class="faint" style="margin:8px 0 10px">Tick what you packed. Saved on this device.</p>
+        <div id="bag-list" class="checklist"></div>
       </section>
     </main>
 
@@ -144,6 +157,12 @@
         </div>
       </section>
       <section class="card">
+        <h2>Pain scale</h2>
+        <p class="faint" style="margin:0 0 10px">0 = none · 10 = worst</p>
+        <div id="pain-chips" class="pain-scale chips"></div>
+        <div class="pain-hint"><span>None</span><span id="pain-value-label">Not set</span><span>Severe</span></div>
+      </section>
+      <section class="card">
         <h2>Symptoms</h2>
         <div id="symptom-chips" class="chips"></div>
       </section>
@@ -185,6 +204,23 @@
         <button id="set-save" class="primary" style="width:100%">Save settings</button>
       </section>
       <section class="card">
+        <h2>Period reminders</h2>
+        <p class="muted">Strong local notifications when your period is close. Checked whenever Luna is open (and via the installed app when possible).</p>
+        <div class="toggle-row">
+          <label for="set-reminders">Enable period-ahead alerts</label>
+          <input id="set-reminders" type="checkbox" />
+        </div>
+        <div class="field">
+          <label for="set-remind-days">Warn this many days before</label>
+          <input id="set-remind-days" type="number" min="1" max="5" value="2" />
+        </div>
+        <div class="btn-row">
+          <button id="set-reminders-save" class="primary">Save reminders</button>
+          <button id="test-notification">Test alert</button>
+        </div>
+        <p class="faint" id="notify-status" style="margin:10px 0 0">Notifications: not enabled yet</p>
+      </section>
+      <section class="card">
         <h2>PIN lock</h2>
         <p class="muted" id="set-pin-status">No PIN</p>
         <div class="field"><label>New 4-digit PIN</label><input id="pin-new" inputmode="numeric" maxlength="4" /></div>
@@ -195,18 +231,36 @@
         </div>
       </section>
       <section class="card">
+        <h2>On-device storage</h2>
+        <p class="muted">Luna reads and writes only to this browser’s local storage. Nothing is uploaded.</p>
+        <div class="storage-grid" style="margin:10px 0">
+          <div class="metric"><b id="store-bytes">—</b><span>Saved size</span></div>
+          <div class="metric"><b id="store-days">—</b><span>Days logged</span></div>
+          <div class="metric"><b id="store-cycles">—</b><span>Cycles</span></div>
+          <div class="metric"><b id="store-saved">—</b><span>Last saved</span></div>
+        </div>
+        <button id="verify-storage" style="width:100%">Verify local read/write</button>
+        <p class="faint" id="store-verify" style="margin:8px 0 0"></p>
+      </section>
+      <section class="card">
         <h2>Backup &amp; transfer</h2>
-        <p class="muted">Everything stays on this device until you export. The same JSON file can be downloaded, copied, or shared, then imported on any phone, tablet, or computer that opens Luna.</p>
+        <p class="muted">Export a pretty JSON file or a human-readable text summary. Import replaces data on this device after you confirm.</p>
         <div class="btn-row">
           <button id="export-data" class="primary">Download JSON</button>
-          <button id="copy-export">Copy JSON</button>
+          <button id="export-readable">Download text</button>
         </div>
         <div class="btn-row" style="margin-top:8px">
+          <button id="copy-export">Copy JSON</button>
           <button id="share-export" class="hidden">Share backup</button>
-          <label class="btn" style="text-align:center;flex:1">Import file<input id="import-file" type="file" accept="application/json,.json" class="hidden" /></label>
         </div>
-        <button id="paste-import" style="width:100%;margin-top:8px">Paste JSON to import</button>
-        <p class="faint" style="margin:10px 0 0">Import replaces all data on this device with the backup. PIN lock is included in the file.</p>
+        <div class="btn-row" style="margin-top:8px">
+          <label class="btn" style="text-align:center;flex:1">Import file<input id="import-file" type="file" accept="application/json,.json,text/plain,.txt" class="hidden" /></label>
+          <button id="paste-import" style="flex:1">Paste to import</button>
+        </div>
+        <p class="faint" style="margin:10px 0 8px">Import preview</p>
+        <pre id="import-preview" class="preview-box">Choose a file or paste JSON to see a readable summary before replacing local data.</pre>
+        <button id="confirm-import" class="primary hidden" style="width:100%;margin-top:8px">Confirm replace with import</button>
+        <p class="faint" style="margin:10px 0 0">PIN lock is included in JSON backups.</p>
       </section>
       <section class="card">
         <h2>Danger</h2>
