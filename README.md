@@ -4,16 +4,86 @@ A Flo-style period and cycle tracker that runs entirely in the browser. Built fo
 
 Live (after Pages is enabled): https://crowserainance.github.io/Menstruation-Tracker/
 
-## What this foundation includes
+## What this is
 
-- Today view: cycle day, phase, countdown to next period, estimated ovulation
-- Month calendar with period / predicted period / fertile window / ovulation
-- Daily log: flow, period start/end, symptoms, mood, notes
-- Insights: average cycle from history, range, upcoming dates
-- Optional 4-digit PIN lock (SHA-256, checked only on this device)
-- Export / import JSON backup so two devices can share a copy
-- Installable PWA (Add to Home Screen on Android / iOS Safari)
-- GitHub Pages workflow
+Luna is a **static Progressive Web App (PWA)** with a bright seashell + light-red UI. Open the URL in any modern browser on phone, tablet, or desktop. Install it to the home screen for an app-like shell; offline caching is handled by the service worker.
+
+## Features
+
+- Today view: cycle day, phase, countdown, ovulation estimate, period-ahead banner
+- **Period bag checklist** (pads, liners, wipes, pain relief, spare underwear, and more)
+- Month calendar with period / predicted / fertile / ovulation markers
+- Daily log: flow, **pain 0–10**, symptoms, mood, notes
+- Insights: average cycle, range, upcoming dates
+- **Period-ahead reminders** with strong local notifications (`requireInteraction`, vibration, renotify)
+- Optional 4-digit PIN lock
+- Heavy on-device storage: save + read-back verify, storage size panel
+- Portable backup: pretty JSON, human-readable text summary, preview-before-import
+- Installable PWA + GitHub Pages workflow
+
+## Cross-platform access
+
+| Platform | How to use |
+| --- | --- |
+| Android | Chrome → open Pages URL → menu → **Add to Home screen** |
+| iPhone / iPad | Safari → Share → **Add to Home Screen** |
+| Desktop | Any Chromium/Firefox/Safari browser; optional install via the address-bar install icon |
+| Offline | After first visit, the service worker serves the shell from cache |
+
+## Reminders
+
+Settings → **Period reminders**:
+
+1. Enable period-ahead alerts
+2. Choose lead days (1–5)
+3. Allow browser notifications when prompted
+4. Use **Test alert** to verify a strong notification
+
+Reminders are checked when Luna opens, when the tab becomes visible again, and about every 30 minutes while open. True background push without a server is limited by browsers; keep the PWA installed for the best results.
+
+## Backup: local export & reusable import
+
+Settings → **Backup & transfer**:
+
+1. **Download JSON** — pretty-printed portable backup
+2. **Download text** — human-readable summary for easy reading
+3. **Copy JSON** / **Share backup**
+4. **Import file** / **Paste** → readable preview → **Confirm replace**
+
+On-device storage panel shows saved size, cycle/day counts, last saved time, and a verify button.
+
+```json
+{
+  "format": "luna-cycle-backup",
+  "version": 1,
+  "exportedAt": "2026-09-15T12:00:00.000Z",
+  "app": "Luna",
+  "data": {
+    "version": 1,
+    "onboarded": true,
+    "settings": {
+      "displayName": "",
+      "typicalCycle": 28,
+      "typicalPeriod": 5,
+      "lutealDays": 14,
+      "remindersEnabled": true,
+      "remindDaysBefore": 2,
+      "pinHash": ""
+    },
+    "bag": [{ "id": "pads", "label": "Pads / napkins", "packed": false }],
+    "cycles": [{ "start": "2026-08-20", "end": "2026-08-24" }],
+    "days": {
+      "2026-08-20": {
+        "flow": "medium",
+        "pain": 6,
+        "symptoms": ["Cramps"],
+        "mood": "Low",
+        "notes": ""
+      }
+    }
+  }
+}
+```
 
 ## How predictions work
 
@@ -26,66 +96,18 @@ These are calendar estimates, not lab results. Do **not** use this as contracept
 
 ## Privacy
 
-- Cycle data never leaves the browser unless you export a JSON file.
-- The source code in this repo is public. The *data* is not in the repo.
-- A PIN only hides the UI on that device. It is not encryption. Anyone with device access and devtools can still read `localStorage`.
-- Clearing site data, switching browsers, or using private mode will look like a fresh install. Export a backup first.
-
-## Use it on a phone
-
-1. Open the GitHub Pages URL in Chrome (Android) or Safari (iPhone).
-2. Android: menu → **Add to Home screen**.
-3. iPhone: Share → **Add to Home Screen**.
-4. Complete onboarding, then set a PIN under Settings if you want a lock.
-
-To use the same history on a second device: Settings → Export JSON, then Import on the other device.
+- Cycle data never leaves the browser unless you export a file.
+- A PIN only hides the UI on that device. It is not encryption.
+- Clearing site data looks like a fresh install — export a backup first.
 
 ## Enable GitHub Pages (one-time)
 
 Repo → **Settings** → **Pages** → Source: **GitHub Actions**.
-The workflow in `.github/workflows/pages.yml` publishes on every push to `main`.
-
-If the first Actions run fails with an environment error, open **Settings → Pages** once so GitHub creates the `github-pages` environment, then re-run the workflow.
 
 ## Local preview
 
-Any static server from the repo root:
-
 ```bash
-python -m http.server 8080
+python3 -m http.server 8080
 ```
 
 Then open `http://localhost:8080`.
-
-## Data shape
-
-```json
-{
-  "version": 1,
-  "onboarded": true,
-  "settings": {
-    "displayName": "",
-    "typicalCycle": 28,
-    "typicalPeriod": 5,
-    "lutealDays": 14,
-    "pinHash": ""
-  },
-  "cycles": [{ "start": "2026-08-20", "end": "2026-08-24" }],
-  "days": {
-    "2026-08-20": {
-      "flow": "medium",
-      "symptoms": ["Cramps"],
-      "mood": "Low",
-      "notes": ""
-    }
-  }
-}
-```
-
-## Next extras worth adding later
-
-- Browser notifications a day or two before a predicted period
-- Optional temperature / LH test logging
-- Cycle-length chart
-- Encrypted backup file (passworded ZIP or WebCrypto)
-- Shared read-only partner view via a manually copied export
