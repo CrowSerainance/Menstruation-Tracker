@@ -100,9 +100,32 @@ These are calendar estimates, not lab results. Do **not** use this as contracept
 - A PIN only hides the UI on that device. It is not encryption.
 - Clearing site data looks like a fresh install — export a backup first.
 
-## Enable GitHub Pages (one-time)
+## Hosting (your GitHub repo)
 
-Repo → **Settings** → **Pages** → Source: **GitHub Actions**.
+Yes — Luna is meant to be hosted **from this repository** with **GitHub Pages**.
+
+**Live URL (after deploy succeeds):**  
+https://crowserainance.github.io/Menstruation-Tracker/
+
+Every push to `main` runs `.github/workflows/pages.yml`, which publishes only the static app files (`index.html`, `app.js`, `styles.css`, etc.).
+
+### One-time Pages setup
+
+If Actions show *“Get Pages site failed”*, Pages is not enabled yet:
+
+1. Open **Settings → Pages**
+2. Under **Build and deployment → Source**, choose **GitHub Actions**
+3. Re-run the failed **Deploy to GitHub Pages** workflow (Actions tab → workflow → Re-run),  
+   or push any commit to `main`
+
+The workflow also sets `enablement: true` so a later run can turn Pages on automatically when permissions allow.
+
+### After it is live
+
+1. Open the Pages URL on your phone
+2. Android Chrome → **Add to Home screen** / iPhone Safari → **Add to Home Screen**
+3. Optional: Settings → enable period reminders and allow notifications
+4. Export a JSON backup before clearing browser data
 
 ## Local preview
 
