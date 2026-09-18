@@ -2,7 +2,8 @@
 
 A Flo-style period and cycle tracker that runs entirely in the browser. Built for private use. **No accounts. No server. No analytics.** Logs stay in `localStorage` on the device that opened the page.
 
-Live (after Pages is enabled): https://crowserainance.github.io/Menstruation-Tracker/
+Live site: https://crowserainance.github.io/Menstruation-Tracker/  
+(Hosted from this repo via GitHub Pages — see [Hosting](#hosting-your-github-repo).)
 
 ## What this is
 
