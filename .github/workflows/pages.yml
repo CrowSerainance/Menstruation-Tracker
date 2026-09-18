@@ -22,9 +22,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Prepare static site
+        run: |
+          mkdir -p _site/icons
+          cp index.html 404.html styles.css app.js manifest.json sw.js .nojekyll _site/
+          cp icons/icon.svg _site/icons/
+
+      # Auto-enable Pages (GitHub Actions source) when it is not configured yet
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
+
       - id: deployment
         uses: actions/deploy-pages@v4

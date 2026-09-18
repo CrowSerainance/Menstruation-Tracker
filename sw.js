@@ -1,11 +1,12 @@
-const CACHE = "luna-v3";
+const CACHE = "luna-v4";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
   "./manifest.json",
-  "./icons/icon.svg"
+  "./icons/icon.svg",
+  "./404.html"
 ];
 
 self.addEventListener("install", (event) => {

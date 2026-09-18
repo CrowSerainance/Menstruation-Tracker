@@ -2,6 +2,24 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <script>
+    /* Project Pages live under /Menstruation-Tracker/ — keep relative assets working. */
+    (function () {
+      var host = location.hostname;
+      var parts = location.pathname.split("/").filter(Boolean);
+      var base = "./";
+      if (host.endsWith("github.io") && parts[0] === "Menstruation-Tracker") {
+        base = "/Menstruation-Tracker/";
+        if (!location.pathname.endsWith("/") && !/\.[a-z0-9]+$/i.test(location.pathname)) {
+          location.replace(base + location.search + location.hash);
+          return;
+        }
+      }
+      var el = document.createElement("base");
+      el.href = base;
+      document.head.prepend(el);
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#fff5ee" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
