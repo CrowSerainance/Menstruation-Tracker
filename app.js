@@ -145,13 +145,15 @@ function save() {
   state.meta = state.meta || {};
   state.meta.lastSavedAt = new Date().toISOString();
   const text = JSON.stringify(state);
-  localStorage.setItem(STORE_KEY, text);
   try {
+    localStorage.setItem(STORE_KEY, text);
     const readBack = localStorage.getItem(STORE_KEY);
     if (readBack !== text) throw new Error("read-back mismatch");
+    return true;
   } catch (err) {
-    console.warn("Luna storage verify failed", err);
-    toast("Saved, but storage verify failed");
+    console.warn("Luna storage save/verify failed", err);
+    toast("Could not save on this device — export a backup");
+    return false;
   }
 }
 
@@ -445,7 +447,7 @@ function notificationPayload(title, body, tag) {
 async function showStrongNotification(title, body, tag) {
   const payload = notificationPayload(title, body, tag);
   try {
-    const reg = await navigator.serviceWorker?.ready;
+    const reg = await navigator.serviceWorker?.getRegistration();
     if (reg?.showNotification) {
       await reg.showNotification(payload.title, payload.options);
       return true;
@@ -502,6 +504,36 @@ function toast(msg) {
   el.textContent = msg;
   el.classList.add("show");
   setTimeout(() => el.classList.remove("show"), 1800);
+}
+
+async function updateConnectivityStatus() {
+  const pill = $("#connectivity-status");
+  const text = $("#connectivity-text");
+  const detail = $("#offline-detail");
+  if (!pill || !text) return;
+
+  const offline = navigator.onLine === false;
+  pill.classList.toggle("offline", offline);
+  text.textContent = offline ? "Offline · logging works" : "Saved locally";
+
+  let ready = false;
+  if ("serviceWorker" in navigator) {
+    try {
+      ready = Boolean(await navigator.serviceWorker.getRegistration());
+    } catch {
+      ready = false;
+    }
+  }
+
+  if (detail) {
+    if (ready) {
+      detail.textContent = offline
+        ? "Offline mode is active. Core tracking remains available from this device."
+        : "Offline shell is ready. You can disconnect and keep using core tracking.";
+    } else {
+      detail.textContent = "Open Luna once while online to finish preparing the offline app shell.";
+    }
+  }
 }
 
 function render() {
@@ -992,8 +1024,13 @@ function bind() {
   $("#pin-del").addEventListener("click", () => { pinBuffer = pinBuffer.slice(0, -1); paintPin(); });
 
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") checkPeriodReminders(false);
+    if (document.visibilityState === "visible") {
+      checkPeriodReminders(false);
+      updateConnectivityStatus();
+    }
   });
+  window.addEventListener("online", updateConnectivityStatus);
+  window.addEventListener("offline", updateConnectivityStatus);
 }
 
 function paintPin() {
@@ -1019,13 +1056,18 @@ async function addPinDigit(d) {
   }
 }
 
-function boot() {
+async function boot() {
   state = migrateState(state);
   bind();
   render();
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    try {
+      await navigator.serviceWorker.register("./sw.js");
+    } catch (err) {
+      console.warn("Luna service worker registration failed", err);
+    }
   }
+  await updateConnectivityStatus();
   scheduleReminderChecks();
 }
 
