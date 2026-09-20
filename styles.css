@@ -65,6 +65,35 @@ body {
 }
 .brand p { margin: 0; font-size: 12px; color: var(--faint); font-weight: 600; }
 
+.connectivity-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 190px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.76);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.2;
+  text-align: right;
+}
+.connectivity-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0 3px rgba(47,157,106,0.12);
+}
+.connectivity-status.offline .connectivity-dot {
+  background: var(--rose-deep);
+  box-shadow: 0 0 0 3px rgba(217,72,100,0.12);
+}
+.connectivity-status.offline { color: var(--rose-deep); }
+
 .card {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -336,4 +365,13 @@ label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px
     box-shadow: 0 16px 40px rgba(240, 98, 122, 0.12);
   }
   .nav { border-radius: 0 0 28px 28px; }
+}
+
+
+@media (max-width: 380px) {
+  .connectivity-status {
+    max-width: 132px;
+    font-size: 9px;
+    padding: 5px 7px;
+  }
 }
