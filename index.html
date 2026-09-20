@@ -89,6 +89,10 @@
           <p>Private cycle tracker</p>
         </div>
       </div>
+      <div id="connectivity-status" class="connectivity-status" role="status" aria-live="polite">
+        <span class="connectivity-dot" aria-hidden="true"></span>
+        <span id="connectivity-text">Checking device status…</span>
+      </div>
     </header>
 
     <main id="tab-today" class="tab">
@@ -247,6 +251,11 @@
           <button id="set-pin" class="primary">Set PIN</button>
           <button id="set-pin-clear">Remove PIN</button>
         </div>
+      </section>
+      <section class="card">
+        <h2>Offline &amp; on-device</h2>
+        <p class="muted">Logging, calendar history, predictions, the bag checklist, and saved settings work without internet after Luna has been opened once. Your data stays in this browser.</p>
+        <p class="faint" id="offline-detail" style="margin:0 0 12px">Checking offline readiness…</p>
       </section>
       <section class="card">
         <h2>On-device storage</h2>
