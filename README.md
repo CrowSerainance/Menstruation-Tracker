@@ -21,6 +21,8 @@ Luna is a **static Progressive Web App (PWA)** with a bright seashell + light-re
 - Heavy on-device storage: save + read-back verify, storage size panel
 - Portable backup: pretty JSON, human-readable text summary, preview-before-import
 - Installable PWA + GitHub Pages workflow
+- Visible offline/local status so users know core tracking remains available without a connection
+- Navigation fallback that reopens the cached app shell even when the network is unavailable
 
 ## Cross-platform access
 
@@ -29,7 +31,7 @@ Luna is a **static Progressive Web App (PWA)** with a bright seashell + light-re
 | Android | Chrome → open Pages URL → menu → **Add to Home screen** |
 | iPhone / iPad | Safari → Share → **Add to Home Screen** |
 | Desktop | Any Chromium/Firefox/Safari browser; optional install via the address-bar install icon |
-| Offline | After first visit, the service worker serves the shell from cache |
+| Offline | After the first successful online visit, the service worker caches the app shell. Logging, history, predictions, settings, and the bag checklist continue to work locally without internet. |
 
 ## Reminders
 
