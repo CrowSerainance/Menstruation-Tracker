@@ -211,6 +211,22 @@
         <p class="disclaimer" style="margin-top:12px">Ovulation is estimated by counting back 14 days from the next expected period. It is an average, not a lab result. Do not use this as birth control.</p>
       </section>
       <section class="card">
+        <h2>Cycle length</h2>
+        <p class="faint" style="margin:0 0 10px">Last complete cycles (days between period starts)</p>
+        <div id="cycle-chart" class="cycle-chart" aria-live="polite"></div>
+      </section>
+      <section class="card">
+        <h2>This cycle so far</h2>
+        <div class="row"><span class="muted">Average pain</span><b id="ins-pain">—</b></div>
+        <div class="row" style="margin-top:8px"><span class="muted">Days logged</span><b id="ins-logged">—</b></div>
+        <p class="faint" style="margin:10px 0 0">Top symptoms</p>
+        <div id="ins-symptoms" class="chips" style="margin-top:8px"></div>
+      </section>
+      <section id="backup-nudge" class="alert-banner hidden" role="status">
+        <strong>Backup reminder</strong>
+        <p class="muted" id="backup-nudge-body" style="margin:4px 0 0">Export a JSON backup so you do not lose history if this browser clears site data.</p>
+      </section>
+      <section class="card">
         <h2>History</h2>
         <div id="cycle-list"></div>
       </section>

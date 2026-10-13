@@ -352,6 +352,39 @@ label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px
   width: 22px; height: 22px; accent-color: var(--rose-2);
 }
 
+.cycle-chart {
+  display: grid;
+  gap: 8px;
+  min-height: 40px;
+}
+.cycle-bar-row {
+  display: grid;
+  grid-template-columns: 72px 1fr 36px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted);
+}
+.cycle-bar-track {
+  height: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.cycle-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--rose), var(--rose-2));
+  border-radius: 999px;
+  min-width: 4px;
+}
+.cycle-bar-row b { color: var(--rose-deep); text-align: right; }
+#ins-symptoms .chip {
+  pointer-events: none;
+  cursor: default;
+}
+
 @media (min-width: 900px) {
   body { background: #ffe8e1; }
   .app {

@@ -15,7 +15,7 @@ Luna is a **static Progressive Web App (PWA)** with a bright seashell + light-re
 - **Period bag checklist** (pads, liners, wipes, pain relief, spare underwear, and more)
 - Month calendar with period / predicted / fertile / ovulation markers
 - Daily log: flow, **pain 0–10**, symptoms, mood, notes
-- Insights: average cycle, range, upcoming dates
+- Insights: average cycle, range, upcoming dates, **cycle-length chart**, this-cycle pain/symptoms, backup nudge
 - **Period-ahead reminders** with strong local notifications (`requireInteraction`, vibration, renotify)
 - Optional 4-digit PIN lock
 - Heavy on-device storage: save + read-back verify, storage size panel

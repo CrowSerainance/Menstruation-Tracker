@@ -1,4 +1,4 @@
-const CACHE = "luna-v5";
+const CACHE = "luna-v6";
 const APP_SHELL = [
   "./",
   "./index.html",

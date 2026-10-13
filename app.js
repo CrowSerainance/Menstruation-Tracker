@@ -61,7 +61,7 @@ function defaultState() {
   return {
     version: 1,
     onboarded: false,
-    meta: { lastSavedAt: "", lastVerifiedAt: "" },
+    meta: { lastSavedAt: "", lastVerifiedAt: "", lastExportedAt: "" },
     settings: {
       displayName: "",
       typicalCycle: 28,
@@ -697,6 +697,79 @@ function renderLog() {
   $("#period-toggle").classList.toggle("primary", !onPeriod);
 }
 
+function currentCycleDayEntries() {
+  const p = predictions();
+  const start = p.currentStart || lastPeriodStart();
+  if (!start) return [];
+  const end = p.nextStart ? addDays(p.nextStart, -1) : todayISO();
+  return Object.entries(state.days || {})
+    .filter(([iso]) => iso >= start && iso <= end)
+    .map(([, day]) => day);
+}
+
+function topSymptoms(days, limit = 5) {
+  const counts = new Map();
+  for (const day of days) {
+    for (const s of day.symptoms || []) {
+      if (typeof s !== "string" || !s) continue;
+      counts.set(s, (counts.get(s) || 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit);
+}
+
+function averagePain(days) {
+  const scores = days
+    .map((d) => d.pain)
+    .filter((n) => n !== null && n !== undefined && Number.isFinite(Number(n)))
+    .map(Number);
+  if (!scores.length) return null;
+  return Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10;
+}
+
+function renderCycleChart() {
+  const chart = $("#cycle-chart");
+  if (!chart) return;
+  const done = completeCycles().slice(-8);
+  if (!done.length) {
+    chart.innerHTML = `<p class="faint">Log at least two period starts to see cycle lengths.</p>`;
+    return;
+  }
+  const maxLen = Math.max(...done.map((c) => c.length), 1);
+  chart.innerHTML = done.map((c) => {
+    const pct = Math.round((c.length / maxLen) * 100);
+    return `<div class="cycle-bar-row">
+      <span>${formatLong(c.start)}</span>
+      <div class="cycle-bar-track" title="${c.length} days"><div class="cycle-bar-fill" style="width:${pct}%"></div></div>
+      <b>${c.length}d</b>
+    </div>`;
+  }).join("");
+}
+
+function renderBackupNudge() {
+  const nudge = $("#backup-nudge");
+  if (!nudge) return;
+  const exported = state.meta?.lastExportedAt || "";
+  const hasData = state.cycles.length > 0 || Object.keys(state.days || {}).length > 0;
+  let show = false;
+  let body = "Export a JSON backup so you do not lose history if this browser clears site data.";
+  if (hasData && !exported) {
+    show = true;
+    body = "You have cycle data on this device but no export yet. Settings → Download JSON keeps a reusable copy.";
+  } else if (hasData && exported) {
+    const days = Math.floor((Date.now() - Date.parse(exported)) / 86400000);
+    if (Number.isFinite(days) && days >= 14) {
+      show = true;
+      body = `Last export was ${days} days ago (${formatLong(exported.slice(0, 10))}). Refresh your backup in Settings.`;
+    }
+  }
+  nudge.classList.toggle("hidden", !show);
+  const bodyEl = $("#backup-nudge-body");
+  if (bodyEl) bodyEl.textContent = body;
+}
+
 function renderInsights() {
   const done = completeCycles();
   const lens = done.map((c) => c.length);
@@ -709,6 +782,21 @@ function renderInsights() {
   const p = predictions();
   $("#ins-next").textContent = p.nextStart ? formatLong(p.nextStart) : "—";
   $("#ins-ovu").textContent = p.ovulation ? formatLong(p.ovulation) : "—";
+
+  const cycleDays = currentCycleDayEntries();
+  const pain = averagePain(cycleDays);
+  $("#ins-pain").textContent = pain === null ? "No pain logged" : `${pain}/10`;
+  $("#ins-logged").textContent = String(cycleDays.length);
+  const symptoms = topSymptoms(cycleDays);
+  const symWrap = $("#ins-symptoms");
+  if (symWrap) {
+    symWrap.innerHTML = symptoms.length
+      ? symptoms.map(([name, count]) => `<span class="chip on">${name} · ${count}</span>`).join("")
+      : `<span class="faint">No symptoms logged this cycle yet.</span>`;
+  }
+  renderCycleChart();
+  renderBackupNudge();
+
   const list = $("#cycle-list");
   const starts = state.cycles.map((c) => c.start).sort().reverse();
   if (!starts.length) {
@@ -931,18 +1019,27 @@ function bind() {
     renderSettings();
   });
 
+  function markExported() {
+    state.meta = state.meta || {};
+    state.meta.lastExportedAt = new Date().toISOString();
+    save();
+    if (view.tab === "insights") renderBackupNudge();
+  }
   $("#export-data").addEventListener("click", () => {
     downloadTextFile(`luna-backup-${todayISO()}.json`, backupToText());
+    markExported();
     toast("JSON backup downloaded");
   });
   $("#export-readable").addEventListener("click", () => {
     downloadTextFile(`luna-summary-${todayISO()}.txt`, readableBackup(), "text/plain");
+    markExported();
     toast("Readable summary downloaded");
   });
   $("#copy-export").addEventListener("click", async () => {
     const text = backupToText();
     try {
       await copyText(text);
+      markExported();
       toast("Backup copied");
     } catch {
       window.prompt("Copy this Luna backup JSON:", text);
